@@ -1,0 +1,18 @@
+name: check_dane
+description: "file:///README.md"
+url: "https://github.com/debfx/check_dane"
+tags: DANE, TLSA, SSL, TLS, DNSSEC
+vendor: Linux
+target: Network
+type: Plugin
+license: gplv3
+releases:
+  -
+    name: 0.1
+    description: "0.1 Release"
+    files:
+      -
+        name: check_dane
+        url: "file:///check_dane"
+        description: "First release"
+        checksum: 7185cf1d871bee092e1a8ac988d5ce39
