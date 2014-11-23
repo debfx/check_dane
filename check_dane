@@ -1,0 +1,268 @@
+#!/usr/bin/python3
+
+# Copyright (C) 2014 Felix Geyer <debfx@fobos.de>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 or (at your option)
+# version 3 of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import argparse
+import datetime
+import dns.message
+import dns.query
+import dns.resolver
+import hashlib
+import re
+import socket
+import ssl
+import subprocess
+import sys
+
+VERSION = "0.1"
+
+class ProtocolError(Exception):
+    pass
+
+def nagios_ok(msg):
+    print("DANE OK - " + msg)
+    sys.exit(0)
+
+def nagios_warning(msg):
+    print("DANE WARNING - " + msg)
+    sys.exit(1)
+
+def nagios_critical(msg):
+    print("DANE CRITICAL - " + msg)
+    sys.exit(2)
+
+def nagios_unknown(msg):
+    print("DANE UNKONWN - " + msg)
+    sys.exit(3)
+
+def create_resolver(dnssec=True, timeout=None, nameserver=None):
+    resolver = dns.resolver.Resolver()
+
+    if timeout and timeout != 0:
+        resolver.lifetime = timeout
+
+    if nameserver:
+        resolver.nameservers = [nameserver]
+
+    if dnssec:
+        resolver.edns = 0
+        resolver.payload = 1280
+        resolver.ednsflags = dns.flags.DO
+
+    return resolver
+
+def check_dns_response_auth(response):
+    if response.response.flags & dns.flags.AD:
+        return True
+    else:
+        return False
+
+def extract_pubkey(cert_binary):
+    # should really be done with a python 3 module that exposes this openssl api
+
+    # extract public key in pem format
+    pubkey_pem = subprocess.check_output(["openssl", "x509", "-pubkey", "-inform", "der", "-noout"], input=cert_binary)
+    # conver to binary / der format
+    pubkey_binary = subprocess.check_output(["openssl", "pkey", "-pubin", "-outform", "der"], input=pubkey_pem)
+
+    return pubkey_binary
+
+def validate_dane(cert_binary, tlsa_record):
+    if tlsa_record.usage != 3:
+        # unsupported
+        return False
+
+    if tlsa_record.selector == 0:
+        data = cert_binary
+    elif tlsa_record.selector == 1:
+        data = extract_pubkey(cert_binary)
+    else:
+        return False
+
+    if tlsa_record.mtype == 0:
+        hashed = data
+    elif tlsa_record.mtype == 1:
+        hashed = hashlib.sha256(data).digest()
+    elif tlsa_record.mtype == 2:
+        hashed = hashlib.sha512(data).digest()
+    else:
+        return False
+
+    return hashed == tlsa_record.cert
+
+def check_cert_expiry(cert, days_warning, days_critical=None):
+    not_after = datetime.datetime.strptime(cert["notAfter"], "%b %d %H:%M:%S %Y %Z")
+    date_diff = not_after - datetime.datetime.now()
+
+    if days_critical:
+        if date_diff <= datetime.timedelta(days_critical):
+             nagios_critical("{}:{} cert expires in {} days".format(args.host, args.port, date_diff.days))
+
+    if date_diff <= datetime.timedelta(days_warning):
+        nagios_warning("{}:{} cert expires in {} days".format(args.host, args.port, date_diff.days))
+
+def smtp_read_response(sock):
+    response = ""
+    line_end = False
+    while not line_end:
+        line = sock.recv(1024)
+        response += line.decode("ASCII")
+        if len(line) < 4 or line[3] != "-":
+            line_end = True
+    return response
+
+def connect_smtp(sock):
+    smtp_read_response(sock)
+    sock.sendall(b"EHLO openssl.client.net\n")
+
+    response = smtp_read_response(sock)
+    if "STARTTLS" not in response:
+        raise ProtocolError("Server doesn't support STARTTLS")
+
+    sock.sendall(b"STARTTLS\n")
+
+    smtp_read_response(sock)
+
+def connect_imap(sock):
+    sock.recv(1024)
+    sock.sendall(b". CAPABILITY\n")
+
+    response = smtp_read_response(sock)
+    if "STARTTLS" not in response:
+        raise ProtocolError("Server doesn't support STARTTLS")
+
+    sock.sendall(b". STARTTLS\n")
+
+    smtp_read_response(sock)
+
+def connect_xmpp(sock, host):
+    sock.sendall("<stream:stream xmlns:stream='http://etherx.jabber.org/streams' xmlns='jabber:client' to='{}' version='1.0'>".format(host).encode("ASCII"))
+
+    buf = sock.recv(1024)
+    if "<starttls xmlns='urn:ietf:params:xml:ns:xmpp-tls'" not in buf.decode("ASCII"):
+        raise ProtocolError("Server doesn't support STARTTLS")
+
+    sock.send(b"<starttls xmlns='urn:ietf:params:xml:ns:xmpp-tls'/>")
+
+    buf = sock.recv(1024)
+    if "<proceed" not in buf.decode("ASCII"):
+        raise ProtocolError("Server doesn't support STARTTLS")
+
+parser = argparse.ArgumentParser(description=""" Nagios/Icinga plugin for checking DANE/TLSA records.
+                                 It compares the DANE/TLSA record against the TLS certificate provided by a service.""")
+
+parser.add_argument("--host", "-H", dest="host", required=True, help="Hostname to check.")
+parser.add_argument("--port", "-p", type=int, required=True, help="Connect to TCP port.")
+parser.add_argument("--ip", "-I", dest="ip", help="Connect to this IP instead of resolving the host.")
+parser.add_argument("--starttls", choices=["smtp", "imap", "xmpp"], help="Send the protocol-specific messages to enable TLS.")
+parser.add_argument("--check-pkix", dest="check_cert", action="store_true", help="Additionally perform traditional checks on the certificate (ca trust path, hostname, expiry).")
+parser.add_argument("--min-days-valid", help="Minimum number of days a certificate has to be valid. Format: INTEGER[,INTEGER]. 1st is #days for warning, 2nd is critical.")
+parser.add_argument("--no-dnssec", dest="dnssec", action="store_false", help="Continue even when DNS replies aren't DNSSEC authenticated.")
+parser.add_argument("--nameserver", help="Use a custom nameserver.")
+parser.add_argument("--timeout", type=int, default=10, help="Network timeone in sec. Default: 10")
+parser.add_argument("--version", action="version", version="%(prog)s " + VERSION)
+args = parser.parse_args()
+
+pyver = sys.version_info
+if pyver[0] < 3 or (pyver[0] == 3 and pyver[1] < 4):
+    nagios_unknown("check_dane requires Python >= 3.4")
+
+if args.port < 1 or args.port > 65535:
+    nagios_unknown("Invalid port")
+
+if args.min_days_valid and not re.search(r"^\d+(,\d+)?$", args.min_days_valid):
+    nagios_unknown("--check-cert-expire takes INTEGER[,INTEGER] as arguments")
+
+if args.timeout < 0:
+    nagios_unknown("Invalid timeout argument")
+
+if args.ip:
+    ip = args.ip
+else:
+    ip = args.host
+
+context = ssl.create_default_context()
+if not args.check_cert:
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+
+if args.timeout == 0:
+    socket.setdefaulttimeout(None)
+else:
+    socket.setdefaulttimeout(args.timeout)
+
+# TODO: use our resolver
+try:
+    sock = socket.create_connection((ip, args.port))
+except OSError as e:
+    nagios_unknown(str(e))
+
+if args.starttls == "smtp":
+    connect_smtp(sock)
+elif args.starttls == "imap":
+    connect_imap(sock)
+elif args.starttls == "xmpp":
+    connect_xmpp(sock, args.host)
+
+try:
+    ssl_sock = context.wrap_socket(sock, server_hostname=args.host)
+except ssl.CertificateError as e:
+    nagios_critical(str(e))
+except (ProtocolError, ssl.SSLError) as e:
+    nagios_unknown("Can't establish a TLS connection\n" + str(e))
+
+cert_binary = ssl_sock.getpeercert(binary_form=True)
+cert_dict = ssl_sock.getpeercert()
+ssl_sock.close()
+
+resolver = create_resolver(dnssec=args.dnssec, timeout=args.timeout, nameserver=args.nameserver)
+
+tlsa_domain = "_{}._tcp.{}".format(args.port, args.host)
+
+try:
+    tlsa_records = resolver.query(tlsa_domain, "TLSA")
+except dns.resolver.NXDOMAIN:
+    nagios_critical("No DNS TLSA record found: {}".format(tlsa_domain))
+except dns.exception.Timeout:
+    nagios_unknown("DNS query timeout: {}".format(tlsa_domain))
+
+if args.dnssec and not check_dns_response_auth(tlsa_records):
+    nagios_unknown("DNS query not DNSSEC validated")
+
+dane_valid_cert = False
+
+for tlsa in tlsa_records:
+    if validate_dane(cert_binary, tlsa):
+        dane_valid_cert = True
+        break
+
+if not dane_valid_cert:
+    nagios_critical("Certificate doesn't match TLSA record")
+
+if args.check_cert and args.min_days_valid:
+    days_parts = args.min_days_valid.split(",")
+
+    if len(days_parts) == 2:
+        check_cert_expiry(cert_dict, int(days_parts[0]), int(days_parts[1]))
+    else:
+        check_cert_expiry(cert_dict, int(days_parts[0]))
+
+if args.dnssec:
+    nagios_ok("{}:{} cert matches TLSA record".format(args.host, args.port))
+else:
+    nagios_ok("{}:{} cert matches TLSA record (DNSSEC not validated)".format(args.host, args.port))
+
+# kate: space-indent on; indent-width 4; 
