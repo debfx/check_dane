@@ -81,7 +81,7 @@ def extract_pubkey(cert_binary):
     return pubkey_binary
 
 def validate_dane(cert_binary, tlsa_record):
-    if tlsa_record.usage != 3:
+    if tlsa_record.usage != 3 & tlsa_record.usage != 1:
         # unsupported
         return False
 
@@ -165,6 +165,7 @@ parser = argparse.ArgumentParser(description=""" Nagios/Icinga plugin for checki
                                  It compares the DANE/TLSA record against the TLS certificate provided by a service.""")
 
 parser.add_argument("--host", "-H", dest="host", required=True, help="Hostname to check.")
+parser.add_argument("--host-port", "-P", type=int, help="Port to look up (if not same as TCP port).")
 parser.add_argument("--port", "-p", type=int, required=True, help="Connect to TCP port.")
 parser.add_argument("--ip", "-I", dest="ip", help="Connect to this IP instead of resolving the host.")
 parser.add_argument("--starttls", choices=["smtp", "imap", "xmpp"], help="Send the protocol-specific messages to enable TLS.")
@@ -193,6 +194,11 @@ if args.ip:
     ip = args.ip
 else:
     ip = args.host
+
+if args.host_port:
+    host_port = args.host_port
+else:
+    host_port = args.port
 
 context = ssl.create_default_context()
 if not args.check_cert:
@@ -230,7 +236,7 @@ ssl_sock.close()
 
 resolver = create_resolver(dnssec=args.dnssec, timeout=args.timeout, nameserver=args.nameserver)
 
-tlsa_domain = "_{}._tcp.{}".format(args.port, args.host)
+tlsa_domain = "_{}._tcp.{}".format(host_port, args.host)
 
 try:
     tlsa_records = resolver.query(tlsa_domain, "TLSA")
@@ -261,8 +267,14 @@ if args.check_cert and args.min_days_valid:
         check_cert_expiry(cert_dict, int(days_parts[0]))
 
 if args.dnssec:
-    nagios_ok("{}:{} cert matches TLSA record".format(args.host, args.port))
+    if args.host != ip or args.port != host_port:
+        nagios_ok("{}:{} cert matches TLSA record (connect to {}:{})".format(args.host, host_port, ip, args.port))
+    else:
+        nagios_ok("{}:{} cert matches TLSA record".format(args.host, host_port))
 else:
-    nagios_ok("{}:{} cert matches TLSA record (DNSSEC not validated)".format(args.host, args.port))
+    if args.host != ip or args.port != host_port:
+      nagios_ok("{}:{} cert matches TLSA record (DNSSEC not validated) (connect to {}:{})".format(args.host, host_port, ip, args.port))
+    else:
+      nagios_ok("{}:{} cert matches TLSA record (DNSSEC not validated)".format(args.host, host_port))
 
 # kate: space-indent on; indent-width 4; 
