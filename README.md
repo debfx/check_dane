@@ -10,8 +10,11 @@ Usage
 
     -h, --help            show this help message and exit
     --host HOST, -H HOST  Hostname to check.
-    --port PORT, -p PORT  Connect to TCP port.
-    --ip IP, -I IP        Connect to this IP instead of resolving the host.
+    --port PORT, -p PORT  TCP port to check.
+    --connect-host CONNECT_HOST, --ip CONNECT_HOST, -I CONNECT_HOST
+                          Connect to this host instead of --host.
+    --connect-port CONNECT_PORT
+                          Connect to this port instead of --port.
     --starttls {smtp,imap,xmpp}
                           Send the protocol-specific messages to enable TLS.
     --check-pkix          Additionally perform traditional checks on the
@@ -30,7 +33,7 @@ Usage
 Supported TLSA records
 ======================
 
-   * Certificate Usage: Only "Domain-issued certificate" (3) is supported.
+   * Certificate Usage: "Service certificate constraint" (1) and "Domain-issued certificate" (3) is supported
    * Selector: "Full certificate" (0) and SubjectPublicKeyInfo (1)
    * Matching Type: "Exact match" (0), SHA-256 hash (1) and SHA-512 hash (2)
 
