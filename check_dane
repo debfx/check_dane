@@ -80,9 +80,30 @@ def extract_pubkey(cert_binary):
 
     return pubkey_binary
 
-def validate_dane(cert_binary, tlsa_record):
-    if tlsa_record.usage != 3:
-        # unsupported
+def get_tlsa_records(args):
+    resolver = create_resolver(dnssec=args.dnssec, timeout=args.timeout, nameserver=args.nameserver)
+
+    tlsa_domain = "_{}._tcp.{}".format(args.port, args.host)
+
+    try:
+        tlsa_records = resolver.query(tlsa_domain, "TLSA")
+    except dns.resolver.NXDOMAIN:
+        nagios_critical("No DNS TLSA record found: {}".format(tlsa_domain))
+    except dns.exception.Timeout:
+        nagios_unknown("DNS query timeout: {}".format(tlsa_domain))
+
+    if args.dnssec and not check_dns_response_auth(tlsa_records):
+        nagios_unknown("DNS query not DNSSEC validated")
+
+    return tlsa_records
+
+def validate_dane(cert_binary, pkix_valid, tlsa_record):
+    if tlsa_record.usage == 3:
+        pass
+    elif tlsa_record.usage == 1 and pkix_valid:
+        pass
+    else:
+        # usage=2 unsupported
         return False
 
     if tlsa_record.selector == 0:
@@ -115,6 +136,35 @@ def check_cert_expiry(cert, days_warning, days_critical=None):
         nagios_warning("{}:{} cert expires in {} days".format(args.host, args.port, date_diff.days))
 
     return date_diff
+
+def connect_to_host(connect_host, connect_port, args, check_cert):
+    if args.timeout == 0:
+        socket.setdefaulttimeout(None)
+    else:
+        socket.setdefaulttimeout(args.timeout)
+
+    context = ssl.create_default_context()
+    if not check_cert:
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+
+    # TODO: use our resolver
+    try:
+        sock = socket.create_connection((connect_host, connect_port))
+    except OSError as e:
+        nagios_unknown(str(e))
+
+    if args.starttls == "smtp":
+        connect_smtp(sock)
+    elif args.starttls == "imap":
+        connect_imap(sock)
+    elif args.starttls == "xmpp":
+        connect_xmpp(sock, args.host)
+
+    try:
+        return context.wrap_socket(sock, server_hostname=args.host)
+    except (ProtocolError, ssl.SSLError) as e:
+        nagios_unknown("Can't establish a TLS connection\n" + str(e))
 
 def smtp_read_response(sock):
     response = ""
@@ -203,63 +253,46 @@ def main():
     else:
         connect_port = args.port
 
-    context = ssl.create_default_context()
-    if not args.check_cert:
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
+    tlsa_records = get_tlsa_records(args)
 
-    if args.timeout == 0:
-        socket.setdefaulttimeout(None)
-    else:
-        socket.setdefaulttimeout(args.timeout)
-
-    # TODO: use our resolver
-    try:
-        sock = socket.create_connection((connect_host, connect_port))
-    except OSError as e:
-        nagios_unknown(str(e))
-
-    if args.starttls == "smtp":
-        connect_smtp(sock)
-    elif args.starttls == "imap":
-        connect_imap(sock)
-    elif args.starttls == "xmpp":
-        connect_xmpp(sock, args.host)
+    has_usage1_tlsa = False
+    for record in tlsa_records:
+        if record.usage == 1:
+            has_usage1_tlsa = True
+            break
 
     try:
-        ssl_sock = context.wrap_socket(sock, server_hostname=args.host)
+        # validate against PKIX if manually requested or we've found a usage=1 tlsa record
+        ssl_sock = connect_to_host(connect_host, connect_port, args, (args.check_cert or has_usage1_tlsa))
+        pkix_valid = True
     except ssl.CertificateError as e:
-        nagios_critical(str(e))
-    except (ProtocolError, ssl.SSLError) as e:
-        nagios_unknown("Can't establish a TLS connection\n" + str(e))
+        if args.check_cert:
+            nagios_critical(str(e))
+        else:
+            ssl_sock = connect_to_host(connect_host, connect_port, args, False)
+            pkix_valid = False
+            pkix_error = str(e)
 
     cert_binary = ssl_sock.getpeercert(binary_form=True)
     cert_dict = ssl_sock.getpeercert()
     ssl_sock.close()
 
-    resolver = create_resolver(dnssec=args.dnssec, timeout=args.timeout, nameserver=args.nameserver)
-
-    tlsa_domain = "_{}._tcp.{}".format(args.port, args.host)
-
-    try:
-        tlsa_records = resolver.query(tlsa_domain, "TLSA")
-    except dns.resolver.NXDOMAIN:
-        nagios_critical("No DNS TLSA record found: {}".format(tlsa_domain))
-    except dns.exception.Timeout:
-        nagios_unknown("DNS query timeout: {}".format(tlsa_domain))
-
-    if args.dnssec and not check_dns_response_auth(tlsa_records):
-        nagios_unknown("DNS query not DNSSEC validated")
-
     dane_valid_cert = False
 
     for tlsa in tlsa_records:
-        if validate_dane(cert_binary, tlsa):
+        if validate_dane(cert_binary, pkix_valid, tlsa):
             dane_valid_cert = True
             break
 
     if not dane_valid_cert:
-        nagios_critical("Certificate doesn't match TLSA record")
+        # test if it would match if it were pkix_valid
+        additional_msg = ""
+        for tlsa in tlsa_records:
+            if validate_dane(cert_binary, True, tlsa):
+                additional_msg = "\nIt matches a TLSA usage=1 record but fails PKIX validation:\n" + pkix_error
+                break
+
+        nagios_critical("Certificate doesn't match TLSA record" + additional_msg)
 
     if args.check_cert and args.min_days_valid:
         days_parts = args.min_days_valid.split(",")
