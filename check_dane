@@ -308,10 +308,12 @@ def main():
     else:
         expire_str = ""
 
-    if args.dnssec:
-        nagios_ok("{}:{} cert matches TLSA record{}".format(args.host, args.port, expire_str))
-    else:
-        nagios_ok("{}:{} cert matches TLSA record (DNSSEC not validated){}".format(args.host, args.port, expire_str))
+    message = "{}:{} cert matches TLSA record".format(args.host, args.port)
+    if not args.dnssec:
+        message += " (DNSSEC not validated)"
+    message += expire_str
+
+    nagios_ok(message)
 
 if __name__ == "__main__":
     main()
