@@ -222,7 +222,7 @@ def main():
     parser.add_argument("--connect-host", "--ip", "-I", dest="connect_host", help="Connect to this host instead of --host.")
     parser.add_argument("--connect-port", dest="connect_port", help="Connect to this port instead of --port.")
     parser.add_argument("--starttls", choices=["smtp", "imap", "xmpp"], help="Send the protocol-specific messages to enable TLS.")
-    parser.add_argument("--check-pkix", dest="check_cert", action="store_true", help="Additionally perform traditional checks on the certificate (ca trust path, hostname, expiry).")
+    parser.add_argument("--check-pkix", action="store_true", help="Additionally perform traditional checks on the certificate (ca trust path, hostname, expiry).")
     parser.add_argument("--min-days-valid", help="Minimum number of days a certificate has to be valid. Format: INTEGER[,INTEGER]. 1st is #days for warning, 2nd is critical.")
     parser.add_argument("--no-dnssec", dest="dnssec", action="store_false", help="Continue even when DNS replies aren't DNSSEC authenticated.")
     parser.add_argument("--nameserver", help="Use a custom nameserver.")
@@ -261,12 +261,14 @@ def main():
             has_usage1_tlsa = True
             break
 
+    initial_check_pkix = (args.check_pkix or has_usage1_tlsa)
+
     try:
         # validate against PKIX if manually requested or we've found a usage=1 tlsa record
-        ssl_sock = connect_to_host(connect_host, connect_port, args, (args.check_cert or has_usage1_tlsa))
-        pkix_valid = True
+        ssl_sock = connect_to_host(connect_host, connect_port, args, initial_check_pkix)
+        pkix_valid = initial_check_pkix
     except ssl.CertificateError as e:
-        if args.check_cert:
+        if args.check_pkix:
             nagios_critical(str(e))
         else:
             ssl_sock = connect_to_host(connect_host, connect_port, args, False)
@@ -294,7 +296,7 @@ def main():
 
         nagios_critical("Certificate doesn't match TLSA record" + additional_msg)
 
-    if args.check_cert and args.min_days_valid:
+    if pkix_valid and args.min_days_valid:
         days_parts = args.min_days_valid.split(",")
 
         if len(days_parts) == 2:
