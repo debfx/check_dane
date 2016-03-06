@@ -168,8 +168,9 @@ def main():
                                     It compares the DANE/TLSA record against the TLS certificate provided by a service.""")
 
     parser.add_argument("--host", "-H", dest="host", required=True, help="Hostname to check.")
-    parser.add_argument("--port", "-p", type=int, required=True, help="Connect to TCP port.")
-    parser.add_argument("--ip", "-I", dest="ip", help="Connect to this IP instead of resolving the host.")
+    parser.add_argument("--port", "-p", type=int, required=True, help="TCP port to check.")
+    parser.add_argument("--connect-host", "--ip", "-I", dest="connect_host", help="Connect to this host instead of --host.")
+    parser.add_argument("--connect-port", dest="connect_port", help="Connect to this port instead of --port.")
     parser.add_argument("--starttls", choices=["smtp", "imap", "xmpp"], help="Send the protocol-specific messages to enable TLS.")
     parser.add_argument("--check-pkix", dest="check_cert", action="store_true", help="Additionally perform traditional checks on the certificate (ca trust path, hostname, expiry).")
     parser.add_argument("--min-days-valid", help="Minimum number of days a certificate has to be valid. Format: INTEGER[,INTEGER]. 1st is #days for warning, 2nd is critical.")
@@ -192,10 +193,15 @@ def main():
     if args.timeout < 0:
         nagios_unknown("Invalid timeout argument")
 
-    if args.ip:
-        ip = args.ip
+    if args.connect_host:
+        connect_host = args.connect_host
     else:
-        ip = args.host
+        connect_host = args.host
+
+    if args.connect_port:
+        connect_port = args.connect_port
+    else:
+        connect_port = args.port
 
     context = ssl.create_default_context()
     if not args.check_cert:
@@ -209,7 +215,7 @@ def main():
 
     # TODO: use our resolver
     try:
-        sock = socket.create_connection((ip, args.port))
+        sock = socket.create_connection((connect_host, connect_port))
     except OSError as e:
         nagios_unknown(str(e))
 
