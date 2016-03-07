@@ -210,7 +210,7 @@ def connect_xmpp(sock, host):
     if "<starttls xmlns='urn:ietf:params:xml:ns:xmpp-tls'" not in buf.decode("ASCII"):
         raise ProtocolError("Server doesn't support STARTTLS")
 
-    sock.send(b"<starttls xmlns='urn:ietf:params:xml:ns:xmpp-tls'/>")
+    sock.sendall(b"<starttls xmlns='urn:ietf:params:xml:ns:xmpp-tls'/>")
 
     buf = sock.recv(1024)
     if "<proceed" not in buf.decode("ASCII"):
