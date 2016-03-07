@@ -23,6 +23,7 @@ import dns.resolver
 import hashlib
 import re
 import socket
+import struct
 import ssl
 import subprocess
 import sys
@@ -160,6 +161,8 @@ def connect_to_host(connect_host, connect_port, args, check_cert):
         connect_imap(sock)
     elif args.starttls == "xmpp":
         connect_xmpp(sock, args.host)
+    elif args.starttls == "quassel":
+        connect_quassel(sock, args.host)
 
     try:
         return context.wrap_socket(sock, server_hostname=args.host)
@@ -213,6 +216,29 @@ def connect_xmpp(sock, host):
     if "<proceed" not in buf.decode("ASCII"):
         raise ProtocolError("Server doesn't support STARTTLS")
 
+def connect_quassel(sock, host):
+    MAGIC = 0x42b33f00
+    FEATURE_ENCRYPTION = 0x1
+    PROTOCOL_DATAGRAM = 0x2
+    PROTOCOL_END = (0x1 << 31)
+
+    sock.sendall(struct.pack("!I", MAGIC | FEATURE_ENCRYPTION))
+    sock.sendall(struct.pack("!I", PROTOCOL_DATAGRAM | PROTOCOL_END))
+
+    try:
+        response = struct.unpack("!I", sock.recv(4))[0]
+    except struct.error:
+        raise ProtocolError("No valid response from server")
+
+    protocol_type = (response & 0xff)
+    connection_features = (response >> 24)
+
+    if not (protocol_type & PROTOCOL_DATAGRAM):
+        raise ProtocolError("Server doesn't support the protocol")
+
+    if not (connection_features & FEATURE_ENCRYPTION):
+        raise ProtocolError("Server doesn't support TLS")
+
 def main():
     parser = argparse.ArgumentParser(description=""" Nagios/Icinga plugin for checking DANE/TLSA records.
                                     It compares the DANE/TLSA record against the TLS certificate provided by a service.""")
@@ -221,7 +247,7 @@ def main():
     parser.add_argument("--port", "-p", type=int, required=True, help="TCP port to check.")
     parser.add_argument("--connect-host", "--ip", "-I", dest="connect_host", help="Connect to this host instead of --host.")
     parser.add_argument("--connect-port", dest="connect_port", help="Connect to this port instead of --port.")
-    parser.add_argument("--starttls", choices=["smtp", "imap", "xmpp"], help="Send the protocol-specific messages to enable TLS.")
+    parser.add_argument("--starttls", choices=["smtp", "imap", "xmpp", "quassel"], help="Send the protocol-specific messages to enable TLS.")
     parser.add_argument("--check-pkix", action="store_true", help="Additionally perform traditional checks on the certificate (ca trust path, hostname, expiry).")
     parser.add_argument("--min-days-valid", help="Minimum number of days a certificate has to be valid. Format: INTEGER[,INTEGER]. 1st is #days for warning, 2nd is critical.")
     parser.add_argument("--no-dnssec", dest="dnssec", action="store_false", help="Continue even when DNS replies aren't DNSSEC authenticated.")
