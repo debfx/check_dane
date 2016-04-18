@@ -130,7 +130,7 @@ def check_cert_expiry(cert, days_warning, days_critical=None):
 
     if days_critical:
         if date_diff <= datetime.timedelta(days_critical):
-             nagios_critical("{}:{} cert expires in {} days".format(args.host, args.port, date_diff.days))
+            nagios_critical("{}:{} cert expires in {} days".format(args.host, args.port, date_diff.days))
 
     if date_diff <= datetime.timedelta(days_warning):
         nagios_warning("{}:{} cert expires in {} days".format(args.host, args.port, date_diff.days))
@@ -318,4 +318,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-# kate: space-indent on; indent-width 4; 
+# kate: space-indent on; indent-width 4;
