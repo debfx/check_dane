@@ -178,13 +178,13 @@ def smtp_read_response(sock):
 
 def connect_smtp(sock):
     smtp_read_response(sock)
-    sock.sendall(b"EHLO openssl.client.net\n")
+    sock.sendall(b"EHLO openssl.client.net\r\n")
 
     response = smtp_read_response(sock)
     if "STARTTLS" not in response:
         raise ProtocolError("Server doesn't support STARTTLS")
 
-    sock.sendall(b"STARTTLS\n")
+    sock.sendall(b"STARTTLS\r\n")
 
     smtp_read_response(sock)
 
