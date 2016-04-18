@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 # Copyright (C) 2014-2016 Felix Geyer <debfx@fobos.de>
 #
@@ -131,7 +131,7 @@ def check_cert_expiry(cert, days_warning, days_critical=None):
 
     if days_critical:
         if date_diff <= datetime.timedelta(days_critical):
-             nagios_critical("{}:{} cert expires in {} days".format(args.host, args.port, date_diff.days))
+            nagios_critical("{}:{} cert expires in {} days".format(args.host, args.port, date_diff.days))
 
     if date_diff <= datetime.timedelta(days_warning):
         nagios_warning("{}:{} cert expires in {} days".format(args.host, args.port, date_diff.days))
@@ -181,13 +181,13 @@ def smtp_read_response(sock):
 
 def connect_smtp(sock):
     smtp_read_response(sock)
-    sock.sendall(b"EHLO openssl.client.net\n")
+    sock.sendall(b"EHLO openssl.client.net\r\n")
 
     response = smtp_read_response(sock)
     if "STARTTLS" not in response:
         raise ProtocolError("Server doesn't support STARTTLS")
 
-    sock.sendall(b"STARTTLS\n")
+    sock.sendall(b"STARTTLS\r\n")
 
     smtp_read_response(sock)
 
@@ -344,4 +344,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-# kate: space-indent on; indent-width 4; 
+# kate: space-indent on; indent-width 4;
