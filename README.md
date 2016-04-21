@@ -15,7 +15,7 @@ Usage
                           Connect to this host instead of --host.
     --connect-port CONNECT_PORT
                           Connect to this port instead of --port.
-    --starttls {smtp,imap,xmpp}
+    --starttls {smtp,imap,xmpp,quassel}
                           Send the protocol-specific messages to enable TLS.
     --check-pkix          Additionally perform traditional checks on the
                           certificate (ca trust path, hostname, expiry).

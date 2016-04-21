@@ -16,3 +16,11 @@ releases:
         url: "file:///check_dane"
         description: "First release"
         checksum: 7185cf1d871bee092e1a8ac988d5ce39
+  -
+    name: 1.0
+    description: "1.0 Release"
+    files:
+      -
+        name: check_dane
+        url: "file:///check_dane"
+        checksum: a6a3eac6734374f3d722152a409bf812
