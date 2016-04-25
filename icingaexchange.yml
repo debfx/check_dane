@@ -23,4 +23,5 @@ releases:
       -
         name: check_dane
         url: "file:///check_dane"
+        description: "1.0 release"
         checksum: a6a3eac6734374f3d722152a409bf812
