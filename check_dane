@@ -153,22 +153,27 @@ def connect_to_host(connect_host, connect_port, args, check_cert):
     try:
         sock = socket.create_connection((connect_host, connect_port))
     except OSError as e:
-        nagios_unknown(str(e))
+        nagios_unknown("Can't establish a connection to %s:%s:\n%s" %
+                (connect_host, connect_port, str(e)))
 
-    if args.starttls == "smtp":
-        connect_smtp(sock)
-    elif args.starttls == "imap":
-        connect_imap(sock)
-    elif args.starttls == "xmpp":
-        connect_xmpp(sock, args.host)
-    elif args.starttls == "quassel":
-        connect_quassel(sock, args.host)
+    try:
+        if args.starttls == "smtp":
+            connect_smtp(sock)
+        elif args.starttls == "imap":
+            connect_imap(sock)
+        elif args.starttls == "xmpp":
+            connect_xmpp(sock, args.host)
+        elif args.starttls == "quassel":
+            connect_quassel(sock, args.host)
+    except (ProtocolError, OSError) as e:
+        nagios_unknown("Failed to initiate STARTTLS to %s (%s:%s):\n%s" %
+                (connect_host, sock.getpeername()[0], connect_port, str(e)))
 
     try:
         return context.wrap_socket(sock, server_hostname=args.host)
-    except (ProtocolError, ssl.SSLError) as e:
-        nagios_unknown("Can't establish a TLS connection to %s:%s: %s" %
-                (connect_host, connect_port, str(e)))
+    except (ProtocolError, ssl.SSLError, OSError) as e:
+        nagios_unknown("Can't establish a TLS connection to %s (%s:%s):\n%s" %
+                (connect_host, sock.getpeername()[0], connect_port, str(e)))
 
 def smtp_read_response(sock):
     response = ""
