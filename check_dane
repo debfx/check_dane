@@ -156,6 +156,8 @@ def connect_to_host(connect_host, connect_port, args, check_cert):
         nagios_unknown("Can't establish a connection to %s:%s:\n%s" %
                 (connect_host, connect_port, str(e)))
 
+    peername = sock.getpeername()[0]
+
     try:
         if args.starttls == "smtp":
             connect_smtp(sock)
@@ -167,13 +169,13 @@ def connect_to_host(connect_host, connect_port, args, check_cert):
             connect_quassel(sock, args.host)
     except (ProtocolError, OSError) as e:
         nagios_unknown("Failed to initiate STARTTLS to %s (%s:%s):\n%s" %
-                (connect_host, sock.getpeername()[0], connect_port, str(e)))
+                (connect_host, peername, connect_port, str(e)))
 
     try:
         return context.wrap_socket(sock, server_hostname=args.host)
     except (ProtocolError, ssl.SSLError, OSError) as e:
         nagios_unknown("Can't establish a TLS connection to %s (%s:%s):\n%s" %
-                (connect_host, sock.getpeername()[0], connect_port, str(e)))
+                (connect_host, peername, connect_port, str(e)))
 
 def smtp_read_response(sock):
     response = ""
