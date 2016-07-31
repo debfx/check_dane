@@ -125,7 +125,7 @@ def validate_dane(cert_binary, pkix_valid, tlsa_record):
 
     return hashed == tlsa_record.cert
 
-def check_cert_expiry(cert, days_warning, days_critical=None):
+def check_cert_expiry(args, cert, days_warning, days_critical=None):
     not_after = datetime.datetime.strptime(cert["notAfter"], "%b %d %H:%M:%S %Y %Z")
     date_diff = not_after - datetime.datetime.now()
 
@@ -334,9 +334,9 @@ def main():
         days_parts = args.min_days_valid.split(",")
 
         if len(days_parts) == 2:
-            timedelta_valid = check_cert_expiry(cert_dict, int(days_parts[0]), int(days_parts[1]))
+            timedelta_valid = check_cert_expiry(args, cert_dict, int(days_parts[0]), int(days_parts[1]))
         else:
-            timedelta_valid = check_cert_expiry(cert_dict, int(days_parts[0]))
+            timedelta_valid = check_cert_expiry(args, cert_dict, int(days_parts[0]))
 
         expire_str = ", expires in {} days".format(timedelta_valid.days)
     else:
