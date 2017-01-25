@@ -163,6 +163,8 @@ def connect_to_host(connect_host, connect_port, args, check_cert):
     try:
         if args.starttls == "smtp":
             connect_smtp(sock)
+        elif args.starttls == "ftp":
+            connect_ftp(sock)
         elif args.starttls == "imap":
             connect_imap(sock)
         elif args.starttls == "xmpp":
@@ -204,6 +206,15 @@ def connect_smtp(sock):
     sock.sendall(b"STARTTLS\r\n")
 
     smtp_read_response(sock)
+
+def connect_ftp(sock):
+    buf = sock.recv(1024)
+
+    sock.sendall(b"AUTH TLS\r\n")
+
+    response = sock.recv(1024).decode("ASCII").strip("\r\n\t ")
+    if not re.search(r"^2\d\d", response):
+        raise ProtocolError("Server doesn't support STARTTLS (%s)" % response)
 
 def connect_imap(sock):
     sock.recv(1024)
@@ -261,7 +272,7 @@ def main():
     parser.add_argument("--port", "-p", type=int, required=True, help="TCP port to check.")
     parser.add_argument("--connect-host", "--ip", "-I", dest="connect_host", help="Connect to this host instead of --host.")
     parser.add_argument("--connect-port", dest="connect_port", help="Connect to this port instead of --port.")
-    parser.add_argument("--starttls", choices=["smtp", "imap", "xmpp", "quassel"], help="Send the protocol-specific messages to enable TLS.")
+    parser.add_argument("--starttls", choices=["smtp", "ftp", "imap", "xmpp", "quassel"], help="Send the protocol-specific messages to enable TLS.")
     parser.add_argument("--check-pkix", action="store_true", help="Additionally perform traditional checks on the certificate (ca trust path, hostname, expiry).")
     parser.add_argument("--min-days-valid", help="Minimum number of days a certificate has to be valid. Format: INTEGER[,INTEGER]. 1st is #days for warning, 2nd is critical.")
     parser.add_argument("--no-dnssec", dest="dnssec", action="store_false", help="Continue even when DNS replies aren't DNSSEC authenticated.")
