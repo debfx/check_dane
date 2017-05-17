@@ -19,6 +19,7 @@ import argparse
 import datetime
 import dns.exception
 import dns.flags
+import dns.rdatatype
 import dns.rdtypes.ANY.TLSA
 import dns.resolver
 import hashlib
@@ -100,7 +101,7 @@ def get_tlsa_records(args: argparse.Namespace) -> dns.resolver.Answer:
     tlsa_domain = "_{}._tcp.{}".format(args.port, args.host)
 
     try:
-        tlsa_records = resolver.query(tlsa_domain, "TLSA")
+        tlsa_records = resolver.query(tlsa_domain, dns.rdatatype.TLSA)
     except dns.resolver.NXDOMAIN:
         nagios_critical("No DNS TLSA record found: {}".format(tlsa_domain))
     except dns.exception.Timeout:
