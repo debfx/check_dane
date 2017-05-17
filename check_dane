@@ -307,7 +307,7 @@ def main():
     parser.add_argument("--no-dnssec", dest="dnssec", action="store_false",
                         help="Continue even when DNS replies aren't DNSSEC authenticated.")
     parser.add_argument("--nameserver", help="Use a custom nameserver.")
-    parser.add_argument("--timeout", type=int, default=10, help="Network timeone in sec. Default: 10")
+    parser.add_argument("--timeout", type=int, default=10, help="Network timeout in sec. Default: 10")
     parser.add_argument("--version", action="version", version="%(prog)s " + VERSION)
     args = parser.parse_args()
 
