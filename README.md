@@ -27,7 +27,7 @@ Usage
                           authenticated.
     --nameserver NAMESERVER
                           Use a custom nameserver.
-    --timeout TIMEOUT     Network timeone in sec. Default: 10
+    --timeout TIMEOUT     Network timeout in sec. Default: 10
     --version             show program's version number and exit
 
 Supported TLSA records
