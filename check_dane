@@ -321,6 +321,7 @@ def main() -> None:
     parser.add_argument("--nameserver", help="Use a custom nameserver.")
     parser.add_argument("--timeout", type=int, default=10, help="Network timeout in sec. Default: 10")
     parser.add_argument("--version", action="version", version="%(prog)s " + VERSION)
+    parser.add_argument("--tlsa_records", type=int, nargs='+', default=[], help="Verify several TLSA records", metavar="TLSA_RECORD")
     args = parser.parse_args()
 
     pyver = sys.version_info
@@ -376,18 +377,29 @@ def main() -> None:
 
     for tlsa in tlsa_records:
         if validate_dane(cert_binary, pkix_valid, tlsa):
+            tup = tlsa.usage * 100 + tlsa.selector * 10 + tlsa.mtype
             dane_valid_cert = True
-            break
+            if tup in args.tlsa_records:
+                args.tlsa_records.remove(tup)
+            if not args.tlsa_records:
+                break
 
     if not dane_valid_cert:
         # test if it would match if it were pkix_valid
         additional_msg = ""
         for tlsa in tlsa_records:
             if validate_dane(cert_binary, True, tlsa):
+                tup = tlsa.usage * 100 + tlsa.selector * 10 + tlsa.mtype
                 additional_msg = "\nIt matches a TLSA usage=1 record but fails PKIX validation:\n" + pkix_error
-                break
+                if tup in args.tlsa_records:
+                    args.tlsa_records.remove(tup)
+                if not args.tlsa_records:
+                    break
 
         nagios_critical("Certificate doesn't match TLSA record" + additional_msg)
+
+    if args.tlsa_records:
+        nagios_critical("TLSA records {} not validated".format(args.tlsa_records))
 
     if pkix_valid and args.min_days_valid:
         days_parts = args.min_days_valid.split(",")
