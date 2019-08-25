@@ -28,6 +28,7 @@ Usage
     --nameserver NAMESERVER
                           Use a custom nameserver.
     --timeout TIMEOUT     Network timeout in sec. Default: 10
+    --tlsa_records        Verify more than one TLSA records for the service (see below)
     --version             show program's version number and exit
 
 Supported TLSA records
@@ -36,6 +37,11 @@ Supported TLSA records
    * Certificate Usage: "Service certificate constraint" (1) and "Domain-issued certificate" (3) is supported
    * Selector: "Full certificate" (0) and SubjectPublicKeyInfo (1)
    * Matching Type: "Exact match" (0), SHA-256 hash (1) and SHA-512 hash (2)
+
+Which TLSA Records to Check
+===========================
+
+By default check_dane ensures that any TLSA record matches.  With --tlsa_records check_dane can verify, that specific records are present and valid.  This is useful, if for a service more than one records are published, like 3 0 1 and 3 0 2.  To verify several records, use --tlsa_records and pass after them the space-separated tuples, e.g '--tlsa_records 301 302'.
 
 Requirements
 ============
