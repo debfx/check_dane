@@ -164,10 +164,7 @@ def connect_to_host(connect_host: str,
                     connect_port: int,
                     args: argparse.Namespace,
                     check_cert: bool) -> ssl.SSLSocket:
-    if args.timeout == 0:
-        socket.setdefaulttimeout(None)
-    else:
-        socket.setdefaulttimeout(args.timeout)
+    socket.setdefaulttimeout(args.timeout or None)
 
     context = ssl.create_default_context()
     if not check_cert:
@@ -336,15 +333,8 @@ def main() -> None:
     if args.timeout < 0:
         nagios_unknown("Invalid timeout argument")
 
-    if args.connect_host:
-        connect_host = args.connect_host
-    else:
-        connect_host = args.host
-
-    if args.connect_port:
-        connect_port = args.connect_port
-    else:
-        connect_port = args.port
+    connect_host = args.connect_host or args.host
+    connect_port = args.connect_port or args.port
 
     tlsa_records = get_tlsa_records(args)
 
