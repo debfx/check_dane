@@ -17,19 +17,19 @@
 
 import argparse
 import datetime
+import hashlib
+import re
+import socket
+import ssl
+import struct
+import subprocess
+import sys
+
 import dns.exception
 import dns.flags
 import dns.rdatatype
 import dns.rdtypes.ANY.TLSA
 import dns.resolver
-import hashlib
-import re
-import socket
-import struct
-import ssl
-import subprocess
-import sys
-
 
 VERSION = "1.1"
 
@@ -78,10 +78,7 @@ def create_resolver(dnssec: bool = True,
 
 
 def check_dns_response_auth(response: dns.resolver.Answer) -> bool:
-    if response.response.flags & dns.flags.AD:
-        return True
-    else:
-        return False
+    return bool(response.response.flags & dns.flags.AD)
 
 
 def extract_pubkey(cert_binary: bytes) -> bytes:
@@ -203,9 +200,9 @@ def connect_to_host(connect_host: str,
         if isinstance(e, ssl.SSLError) and e.reason == "CERTIFICATE_VERIFY_FAILED":
             # pass exceptions concerning certificate validation to the caller
             raise
-        else:
-            nagios_unknown("Can't establish a TLS connection to {} ({}:{}):\n{}"
-                           .format(connect_host, peername, connect_port, str(e)))
+
+        nagios_unknown("Can't establish a TLS connection to {} ({}:{}):\n{}"
+                       .format(connect_host, peername, connect_port, str(e)))
 
 
 def smtp_read_response(sock: socket.socket) -> str:
@@ -233,7 +230,7 @@ def connect_smtp(sock: socket.socket) -> None:
 
 
 def connect_ftp(sock: socket.socket) -> None:
-    buf = sock.recv(1024)
+    sock.recv(1024)
 
     sock.sendall(b"AUTH TLS\r\n")
 
