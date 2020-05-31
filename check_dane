@@ -362,14 +362,13 @@ def main() -> None:
     cert_dict = ssl_sock.getpeercert()
     ssl_sock.close()
 
-    dane_valid_cert = False
+    dane_record_matches = []
 
     for tlsa in tlsa_records:
         if validate_dane(cert_binary, pkix_valid, tlsa):
-            dane_valid_cert = True
-            break
+            dane_record_matches.append(str(tlsa))
 
-    if not dane_valid_cert:
+    if not dane_record_matches:
         # test if it would match if it were pkix_valid
         additional_msg = ""
         for tlsa in tlsa_records:
@@ -391,9 +390,13 @@ def main() -> None:
     else:
         expire_str = ""
 
-    message = "{}:{} cert matches TLSA record".format(args.host, args.port)
+    message = "{}:{} cert matches TLSA record\n\n".format(args.host, args.port)
+    if len(dane_record_matches) == 1:
+        message += "matched record: {}".format(dane_record_matches[0])
+    else:
+        message += "matched records:\n{}".format('\n'.join(dane_record_matches))
     if not args.dnssec:
-        message += " (DNSSEC not validated)"
+        message += "\n\n(DNSSEC not validated)"
     message += expire_str
 
     nagios_ok(message)
