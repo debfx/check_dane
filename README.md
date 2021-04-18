@@ -1,3 +1,10 @@
+:warning: This repository is no longer maintained.
+==========
+
+[check_ssl_cert](https://github.com/matteocorti/check_ssl_cert) supports validating
+DANE records with openssl >= 1.1.0
+
+
 check_dane
 ==========
 
