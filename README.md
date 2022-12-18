@@ -48,7 +48,7 @@ Requirements
 ============
 
    * Python >= 3.4
-   * [dnspython](http://www.dnspython.org/)
+   * [dnspython](http://www.dnspython.org/) >= 2.0
    * openssl binary
    * DNSSEC capable resolver (or use --no-dnssec but be aware of the security implications)
 
